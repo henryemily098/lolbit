@@ -25,7 +25,7 @@ module.exports = {
         let actions = new ActionRowBuilder()
             .setComponents([
                 new ButtonBuilder()
-                    .setStyle(ButtonStyle.Danger)
+                    .setStyle(ButtonStyle.Primary)
                     .setCustomId("player")
                     .setEmoji(queue.playing ? "⏸" : "▶️"),
                 new ButtonBuilder()
@@ -87,7 +87,7 @@ module.exports = {
             let actions = new ActionRowBuilder()
                 .setComponents([
                     new ButtonBuilder()
-                        .setStyle(ButtonStyle.Danger)
+                        .setStyle(ButtonStyle.Primary)
                         .setCustomId("player")
                         .setEmoji(queue.playing ? "⏸" : "▶️"),
                     new ButtonBuilder()

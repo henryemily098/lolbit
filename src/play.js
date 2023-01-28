@@ -111,7 +111,7 @@ async function playHandle(song, guildId, client) {
             let msgs = await song.textChannel.messages.fetch();
             let msg = msgs.get(queue.message.id);
             if(!msg) message = await song.textChannel.send({ embeds: [embed], components: [actions] });
-            else message = queue.message;
+            else message = msg;
         } else message = await song.textChannel.send({ embeds: [embed], components: [actions] });
 
         let collector = message.createMessageComponentCollector({ componentType: ComponentType.Button });
