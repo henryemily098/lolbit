@@ -38,7 +38,8 @@ server.on("listening", () => console.log("Listen to port:", 3000));
 server.get("/", (req, res) => res.send("Hello World"));
 server.get("/callback", (req, res) => {
     let { guild_id } = req.query;
-    res.redirect(`https://discord.com/channels/${guild_id}`);
+    if(guild_id) return res.redirect(`https://discord.com/channels/${guild_id}`);
+    else return res.redirect('https://discord.com/channels/@me');
 });
 
 client.on(Events.ClientReady, () => console.log("Ready!"));
