@@ -219,16 +219,18 @@ async function endedPlayer(guildId, client) {
     const queue = client.queue.get(guildId);
     if(queue) {
         queue.votes = [];
-        if(queue.loop === 2) await playHandle(queue.songs[queue.index], guildId, client);
+        if(queue.loop === 2) playHandle(queue.songs[queue.index], guildId, client).catch(console.log);
         else {
 
             queue.control = null;
             if(queue.message) queue.message.delete().then(() => queue.message = null).catch(console.log);
 
-            if(queue.index === (queue.songs.length - 1) && queue.loop === 1) queue.index = 0;
+            if(queue.loop === 1) {
+                if(queue.index === (queue.songs.length - 1)) queue.index = 0;
+                else queue.index += 1;
+            }
             else queue.index += 1;
-
-            await playHandle(queue.songs[queue.index], guildId, client);
+            playHandle(queue.songs[queue.index], guildId, client).catch(console.log);
         }
     }
 
