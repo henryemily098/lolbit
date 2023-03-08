@@ -46,11 +46,26 @@ module.exports = {
 
         let connection = getVoiceConnection(interaction.guild.id);
         if(connection && connection.joinConfig.channelId !== channel.id) return interaction.reply({ content: `You need to join <#${connection.joinConfig.channelId}> first!`, ephemeral: true }).catch(console.log);
-        else connection = joinVoiceChannel({
-            guildId: interaction.guild.id,
-            channelId: channel.id,
-            adapterCreator: interaction.guild.voiceAdapterCreator
-        });
+        else {
+            connection = joinVoiceChannel({
+                guildId: interaction.guild.id,
+                channelId: channel.id,
+                adapterCreator: interaction.guild.voiceAdapterCreator
+            });
+
+            connection.on("stateChange", (oldState, newState) => {
+                const oldNetworking = Reflect.get(oldState, 'networking');
+                const newNetworking = Reflect.get(newState, 'networking');
+              
+                const networkStateChangeHandler = (oldNetworkState, newNetworkState) => {
+                  const newUdp = Reflect.get(newNetworkState, 'udp');
+                  clearInterval(newUdp?.keepAliveInterval);
+                }
+              
+                oldNetworking?.off('stateChange', networkStateChangeHandler);
+                newNetworking?.on('stateChange', networkStateChangeHandler);
+            });
+        }
 
         let song = null;
         let songs = [];
@@ -175,7 +190,6 @@ module.exports = {
             player: null,
             control: null,
             message: null,
-            interval: null,
             dj_user: interaction.user,
             playing: true,
             index: 0,
@@ -190,7 +204,7 @@ module.exports = {
             embed
                 .setAuthor({ name: "| Added To Queue", iconURL: client.user.displayAvatarURL({ extension: "png", size: 1024, forceStatic: true }) })
                 .setDescription(`[${song.title}](${song.url})`)
-                .setThumbnail(song.thumbnails.sort((a, b) => b.height - a.height)[0].url)
+                .setThumbnail(`https://i.ytimg.com/vi/${song.id}/hqdefault.jpg`)
                 .setFooter({ text: `Requested by ${interaction.user.tag}` });
         }
         else if(songs.length) {

@@ -88,11 +88,12 @@ async function playHandle(song, guildId, client) {
             .setColor(client.config.defaultColor)
             .setAuthor({ name: `| Now Playing`, iconURL: client.user.displayAvatarURL({ extension: "png", size: 1024, forceStatic: true }) })
             .setDescription(`[${song.title}](${song.url})`)
-            .setThumbnail(song.thumbnails.sort((a, b) => b.height - a.height)[0].url)
+            .setThumbnail(`https://i.ytimg.com/vi/${song.id}/hqdefault.jpg`)
             .addFields(
                 {
                     name: "Duration:",
-                    value: `[${client.parseTimeFormat(0)}]🔘▬▬▬▬▬▬▬▬▬▬▬[${client.parseTimeFormat(song.duration)}]`,
+                    value: `[${client.parseTimeFormat(song.duration)}]`,
+                    inline: true
                 },
                 {
                     name: "Requested By:",
@@ -177,32 +178,6 @@ async function playHandle(song, guildId, client) {
             });
         queue.message = message;
         queue.control = collector;
-        queue.interval = setInterval(() => {
-
-            if(!queue.player.state.resource) {
-                clearInterval(queue.interval);
-                queue.interval = null;
-                return;
-            }
-
-            let slider = "▬▬▬▬▬▬▬▬▬▬▬▬";
-            let song = queue.songs[queue.index];
-            let seek = Math.floor((queue.player.state.resource.playbackDuration / song.duration) * slider.length);
-            
-            let split = slider.split("");
-            split[seek] = "🔘";
-            embed.data.fields[0].value = `[${client.parseTimeFormat(queue.player.state.resource.playbackDuration)}]${split.join("")}[${client.parseTimeFormat(song.duration)}]`
-
-            queue.message
-                .edit({ embeds: [embed] })
-                .catch(() => {
-                    clearInterval(queue.interval);
-                    queue.interval = null;
-                    queue.message = null;
-                    queue.control = null;
-                });
-            
-        }, 1000);
     } catch (error) {
         console.log(error);
     }

@@ -42,16 +42,21 @@ module.exports = {
             .setColor(client.config.defaultColor)
             .setAuthor({ name: `| Now Playing`, iconURL: client.user.displayAvatarURL({ extension: "png", size: 1024, forceStatic: true }) })
             .setDescription(`[${song.title}](${song.url})`)
-            .setThumbnail(song.thumbnails.sort((a, b) => b.height - a.height)[0].url)
+            .setThumbnail(`https://i.ytimg.com/vi/${song.id}/hqdefault.jpg`)
             .addFields(
                 {
                     name: "Duration:",
-                    value: client.parseTimeFormat(song.duration),
+                    value: `[${client.parseTimeFormat(song.duration)}]`,
                     inline: true
                 },
                 {
                     name: "Requested By:",
                     value: song.requestedUser.tag,
+                    inline: true
+                },
+                {
+                    name: "Song Author:",
+                    value: song.type === "soundcloud" ? song.author.full_name : song.type === "youtube" ? song.author.name : song.type === "spotify" ? song.artists.map(artist => artist.name).join(" & ") : "",
                     inline: true
                 }
             );
@@ -121,7 +126,7 @@ module.exports = {
                 component.setEmoji(queue.playing ? "⏸" : "▶️");
                 e.update({ components: [actions] }).catch(console.log);
             }
-            else if(e.customId === "queue") queueControl(e, client);
+            else if(e.customId === "queue") queueControl(e, client).catch(console.log);
 
         });
 
