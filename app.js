@@ -45,6 +45,8 @@ const clientPlayer = new ClientPlayer(client, {
     }
 });
 
+app.get("*", (req, res) => res.send("Ready!"));
+
 clientPlayer.on("playSong", async(queue, song) => {
     try {
         let loop;
