@@ -1,5 +1,7 @@
 require("dotenv").config();
 const fs = require("fs");
+const http = require("http");
+const express = require("express");
 const {
     ClientPlayer,
     Collection
@@ -17,6 +19,9 @@ const {
     Routes
 } = require("discord.js");
 
+const app = express();
+const server = http.createServer(app);
+const listener = server.listen(process.env.PORT || 3000, () => console.log("[SERVER] Listen to port:", listener.address().port))
 const rest = new REST({ version: "10" }).setToken(process.env.TOKEN);
 const client = new Client({
     intents: [
