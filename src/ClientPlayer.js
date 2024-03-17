@@ -237,7 +237,7 @@ async function getInfoTrack(query, config) {
         let album = await response.json();
         let items = [];
         for (let i = 0; i < album.tracks.items.length; i++) {
-            let song = playlist.tracks.items[i];
+            let song = album.tracks.items[i];
             let index = listedSongs.map(i => i.id).indexOf(song.id);
 
             let youtubeURL;
@@ -544,7 +544,7 @@ class ClientPlayer {
     }
     /**
      * 
-     * @param {"addSong"|"playSong"|"finishSong"|"finishQueue"} Events 
+     * @param {"addSong"|"playSong"|"finishSong"|"finishQueue"|"addList"} Events 
      * @param {Function} callback 
      */
     on(Events, callback) {
@@ -558,6 +558,11 @@ class ClientPlayer {
                 let { guildId, song } = data;
                 let queue = this.getQueue(guildId);
                 if(Events === "addSong") callback(queue, song);
+            })
+            .on("addList", (data) => {
+                let { guildId, songs } = data;
+                let queue = this.getQueue(guildId);
+                if(Events === "addList") callback(queue, songs);
             })
             .on("finishSong", async(data) => {
                 let { guildId, song } = data;

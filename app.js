@@ -126,16 +126,33 @@ clientPlayer.on("addSong", async(queue, song) => {
         console.log(error);
     }
 });
-clientPlayer.on("finishSong", async(queue) => {
-    let messages = client.messages[queue.id];
-    if(messages && messages[0]) {
-        try {
-            await messages[0].delete();
-        } catch (error) {
-            console.log(error);
-        }
-        delete client.messages[queue.id];
+clientPlayer.on("addList", async(queue, songs) => {
+    try {
+        let interaction = client.interactionConfiguration[queue.id+song.user.id];
+        let embed = new EmbedBuilder()
+            .setColor(client.color)
+            .setAuthor({
+                name: `│ Added ${songs.length} songs to queue`,
+                iconURL: client.user.displayAvatarURL({ size: 1024 })
+            })
+        await interaction.editReply({ embeds: [embed] });
+        delete client.interactionConfiguration[queue.id+song.user.id];
+    } catch (error) {
+        console.log(error);
     }
+});
+clientPlayer.on("finishSong", async(queue) => {
+    if(queue) {
+        let messages = client.messages[queue.id];
+        if(messages && messages[0]) {
+            try {
+                await messages[0].delete();
+            } catch (error) {
+                console.log(error);
+            }
+            delete client.messages[queue.id];
+        }
+    } 
 });
 
 client.color = "#0c0b0b";
