@@ -192,6 +192,45 @@ client.on(Events.ClientReady, () => {
     }
     setInterval(messageCheck, 2500);
 });
+client.on(Events.VoiceStateUpdate, async(oldState, newState) => {
+    let queue = clientPlayer.getQueue(oldState.guild.id);
+    if(queue) {
+        if(oldState.member.user.id === client.user.id) {
+            if(newState.channel) {
+                let members = newState.channel.members.filter(member => !member.user.bot || member.user.id !== client.user.id);
+                let member = members.at(Math.floor(Math.random()*members.size));
+                queue.setDJUser(member.user);
+            }
+            else {
+                let messages = client.messages[queue.id];
+                if(messages && messages[0]) {
+                    try {
+                        await messages[0].delete();
+                    } catch (error) {
+                        console.log(error);
+                    }
+                    delete client.messages[queue.id];
+                }
+                queue.delete();
+            }
+        }
+        else {
+            if(newState.channel) {
+                let members = newState.channel.members.filter(member => !member.user.bot || member.user.id !== client.user.id);
+                if(!members.size) queue.setDJUser(newState.member.user);
+            }
+            else {
+                if(oldState.member.user.id !== queue.djUser.id) return;
+                let members = oldState.channel.members.filter(member => !member.user.bot || member.user.id !== client.user.id);
+                if(members.size) {
+                    let member = members.at(Math.floor(Math.random()*members.size));
+                    queue.setDJUser(member.user);
+                }
+                else queue.setDJUser(null);
+            }
+        }
+    }
+});
 client.on(Events.InteractionCreate, async(interaction) => {
     if(interaction.isCommand()) {
         let logChannel = client.channels.cache.get("1109795504063266887");
@@ -298,7 +337,7 @@ client.on(Events.InteractionCreate, async(interaction) => {
                 try {
                     await interaction.message.delete();
                     await interaction.reply({
-                        content: `This is not current control!${messages && messages[0] ? ` [Click Here For the player control](<${messages[0].url}>)!` : ""}`,
+                        content: `This is not current control!${messages && messages[0] ? ` [Click Here For the player control](${messages[0].url})!` : ""}`,
                         ephemeral: true
                     });
                 } catch (error) {

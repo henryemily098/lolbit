@@ -28,9 +28,9 @@ const regex = {
         playlist: /^.*(list=)([^#\&\?]*).*/gi
     },
     sp: {
-        track: /^(https?:\/\/)?(open\.)?(spotify\.com)\/(track)\/.+$/gi,
-        album: /^(https?:\/\/)?(open\.)?(spotify\.com)\/(album)\/.+$/gi,
-        playlist: /^(https?:\/\/)?(open\.)?(spotify\.com)\/(playlist)\/.+$/gi,
+        track: /^https:\/\/open\.spotify\.com\/album\/([a-zA-Z0-9]+)(\?|$)/,
+        album: /^https:\/\/open\.spotify\.com\/playlist\/([a-zA-Z0-9]+)(\?|$)/,
+        playlist: /^https:\/\/open\.spotify\.com\/track\/([a-zA-Z0-9]+)(\?|$)/,
         mobile: /^(https?:\/\/)?(spotify\.)?(link)\/.+$/gi
     },
     sc: {
@@ -419,7 +419,7 @@ class ClientPlayer {
              * @param {import("discord.js").User|string} userOrUserID 
              */
             setDJUser(userOrUserID) {
-                let user = typeof userOrUserID === "string" ? client.users.cache.get(userOrUserID) : userOrUserID;;
+                let user = userOrUserID ? typeof userOrUserID === "string" ? client.users.cache.get(userOrUserID) : userOrUserID : null;
                 this.djUser = user
                 queue.djUser = user
                 return this;
