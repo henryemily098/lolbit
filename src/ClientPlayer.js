@@ -5,6 +5,7 @@ const {
     entersState,
     getVoiceConnection,
     joinVoiceChannel,
+    StreamType,
     VoiceConnectionStatus
 } = require("@discordjs/voice");
 const {
@@ -15,6 +16,7 @@ const EventEmitter = require("node:events");
 const Collection = require("./Collection");
 
 const ytdl = require("ytdl-core");
+const scdl = require("soundcloud-downloader").default;
 const scrape = require("scrape-youtube").youtube;
 const listedSongs = require("./util/listedSpotifySongs");
 const fetch = require("node-fetch").default;
@@ -85,7 +87,10 @@ async function getInfoTrack(query, config) {
     let track = null;
     let url = query.split(" ")[0];
 
-    const spotify = new Spotify(spotifyCredentials);
+    const spotify = new Spotify({
+        clientID: spotifyCredentials.clientID,
+        clientSecret: spotifyCredentials.clientSecret
+    });
     if(regex.yt.video.test(url)) {
         let trackInfo = await ytdl.getInfo(url);
         track = {
@@ -105,7 +110,7 @@ async function getInfoTrack(query, config) {
         let response = await fetch(`https://www.googleapis.com/youtube/v3/playlistItems?key=${ytKey}&playlistId=${youtube_playlist_parser(query)}&part=snippet&maxResults=10`);
         let data = await response.json();
 
-        track = [];
+        let items = [];
         for (let i = 0; i < data.items.length; i++) {
             let track = data.items[i];
             let trackInfo = await ytdl.getInfo(`https://youtube.com/watch?v=${track.snippet.resourceId.videoId}`);
@@ -122,6 +127,7 @@ async function getInfoTrack(query, config) {
                 source: "youtube"
             });
         }
+        track = items;
     }
     else if(regex.sp.track.test(url)) {
         let trackInfo = await spotify.getTrackByURL(url);
@@ -148,6 +154,105 @@ async function getInfoTrack(query, config) {
             }),
             source: "spotify",
             youtube_url: youtubeURL,
+        }
+    }
+    else if(regex.sp.playlist.test(url)) {
+        let playlist = await spotify.getPlaylistByURL(url);
+        let items = [];
+        for (let i = 0; i < playlist.tracks.items.length; i++) {
+            let song = playlist.tracks.items[i].track;
+            let index = listedSongs.map(i => i.id).indexOf(song.id);
+
+            let youtubeURL;
+            if(listedSongs[index]) youtubeURL = listedSongs[index].url;
+            else {
+                let results = await scrape.search(`${song.name} - ${song.artists.map(i => i.name).join(", ")} Topic`);
+                youtubeURL = results.videos[0].link;
+            }
+
+            let body = {
+                title: `${song.name}`,
+                url: `https://open.spotify.com/track/${song.id}`,
+                song_id: `${song.id}`,
+                thumbnail: `${song.album.images.sort((a, b) => b.height - a.height)[0].url}`,
+                duration: parseInt(song.duration_ms),
+                artist: [...song.artists].map(artist => {
+                    return {
+                        name: `${artist.name}`,
+                        url: `https://open.spotify.com/artist/${artist.id}`
+                    }
+                }),
+                source: "spotify",
+                youtube_url: youtubeURL,
+            }
+            items.push(body);
+        }
+        track = items;
+    }
+    else if(regex.sp.album.test(url)) {
+        let album = await spotify.getAlbumByURL(url);
+        let items = [];
+        for (let i = 0; i < album.tracks.items.length; i++) {
+            let song = playlist.tracks.items[i];
+            let index = listedSongs.map(i => i.id).indexOf(song.id);
+
+            let youtubeURL;
+            if(listedSongs[index]) youtubeURL = listedSongs[index].url;
+            else {
+                let results = await scrape.search(`${song.name} - ${song.artists.map(i => i.name).join(", ")} Topic`);
+                youtubeURL = results.videos[0].link;
+            }
+
+            items.push({
+                title: `${song.name}`,
+                url: `https://open.spotify.com/track/${song.id}`,
+                song_id: `${song.id}`,
+                thumbnail: `${album.images.sort((a, b) => b.height - a.height)[0].url}`,
+                duration: parseInt(song.duration_ms),
+                artist: [...song.artists].map(artist => {
+                    return {
+                        name: `${artist.name}`,
+                        url: `https://open.spotify.com/artist/${artist.id}`
+                    }
+                }),
+                source: "spotify",
+                youtube_url: youtubeURL,
+            });
+        }
+        track = items;
+    }
+    else if(regex.sc.track.test(url)) {
+        if(regex.sc.sets.test(url)) {
+            let sets = await scdl.getSetInfo(url);
+            track = sets.tracks.map((song) => {
+                return {
+                    title: song.title,
+                    url: song.permalink_url,
+                    song_id: `${song.id}`,
+                    thumbnail: song.artwork_url,
+                    duration: song.full_duration,
+                    artist: song.user ? {
+                        name: song.user.username,
+                        url: song.user.permalink_url
+                    } : null,
+                    source: "soundcloud"
+                }
+            });
+        }
+        else {
+            let trackInfo = await scdl.getInfo(url);
+            track = {
+                title: trackInfo.title,
+                url: trackInfo.permalink_url,
+                song_id: `${trackInfo.id}`,
+                thumbnail: trackInfo.artwork_url,
+                duration: trackInfo.full_duration,
+                artist: trackInfo.user ? {
+                    name: trackInfo.user.username,
+                    url: trackInfo.user.permalink_url
+                } : null,
+                source: "soundcloud"
+            }
         }
     }
     else {
@@ -237,6 +342,7 @@ class ClientPlayer {
                         name: song.artist.name ? `${song.artist.name}` : null,
                         url: song.artist.name ? `${song.artist.url}` : null
                     } : null,
+                    source: `${song.source}`,
                     youtube_url: song.source === "spotify" ? `${song.youtube_url}` : null,
                     user: this.client.users.cache.get(song.user.id),
                     textChannel: this.client.channels.cache.get(song.textChannel.id)
@@ -414,7 +520,7 @@ class ClientPlayer {
                 let queue = this.getQueue(guildId);
 
                 if(Events === "finishSong") callback(queue, song);
-                if(queue.position > (queue.songs.length - 1)) event.emit("finishQueue", queue);
+                if(!queue || queue.position > (queue.songs.length - 1)) event.emit("finishQueue", queue);
                 else {
                     const playTrack = async() => {
                         let nextSong = queue.songs[queue.position];
@@ -439,7 +545,7 @@ class ClientPlayer {
                 }
             })
             .on("finishQueue", (queue) => {
-                this.queues.delete(queue.id);
+                if(queue) this.queues.delete(queue.id);
                 if(Events === "finishQueue") callback(queue);
             });
         return this;
@@ -462,6 +568,7 @@ class ClientPlayer {
             votes: [],
             loop: 0,
             volume: 100,
+            shuffle: false,
             position: 0,
             djUser: user,
             playing: true,
@@ -477,6 +584,7 @@ class ClientPlayer {
                 song["id"] = generateID();
                 song["user"] = user;
                 song["textChannel"] = textChannel;
+                return song;
             });
             else {
                 video["id"] = generateID();
@@ -524,7 +632,10 @@ class ClientPlayer {
                 });
             this.players.set(textChannel.guildId, player);
         }
-        if(queue) event.emit("addSong", { guildId: textChannel.guildId, song: video })
+        if(queue) {
+            if(Array.isArray(video)) event.emit("addList", { guildId: textChannel.guildId, songs: video });
+            else event.emit("addSong", { guildId: textChannel.guildId, song: video })
+        }
         else {
             if(!connection) {
                 connection = joinVoiceChannel({
@@ -547,10 +658,15 @@ class ClientPlayer {
                 });
             }
 
-            let strm = await stream(Array.isArray(video)
-                ? video[queue ? queue.position : queueConstruct.position].source === "spotify" ? video[queue ? queue.position : queueConstruct.position].youtube_url : video[queue ? queue.position : queueConstruct.position].url
-                : video.source === "spotify" ? video.youtube_url : video.url
-            );
+            let strm = null;
+            let position = queue ? queue.position : queueConstruct.position;
+            if((Array.isArray(video) && (video[position].source === "youtube" || video[position].source === "spotify")) || (video.source === "youtube" || video.source === "spotify")) {
+                strm = await stream(Array.isArray(video)
+                    ? video[position].source === "spotify" ? video[position].youtube_url : video[position].url
+                    : video.source === "spotify" ? video.youtube_url : video.url
+                );
+            }
+            else strm = { stream: await scdl.downloadFormat(Array.isArray(video) ? video[position].url : video.url, scdl.FORMATS.MP3), type: StreamType.Arbitrary };
             this.queues.set(textChannel.guildId, queueConstruct);
 
             const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm.type });

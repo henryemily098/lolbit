@@ -46,7 +46,6 @@ const clientPlayer = new ClientPlayer(client, {
 });
 
 app.get("*", (req, res) => res.send("Ready!"));
-
 clientPlayer.on("playSong", async(queue, song) => {
     try {
         let loop;
@@ -337,7 +336,7 @@ client.on(Events.InteractionCreate, async(interaction) => {
                     .join("\n")
                 )
                 .setFooter({
-                    text: `Total songs: ${queue.songs.length}`
+                    text: `Total songs: ${queue.loop === 0 ? display.length : queue.songs.length}`
                 })
             try {
                 await interaction.reply({
