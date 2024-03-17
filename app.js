@@ -57,7 +57,6 @@ clientPlayer.on("playSong", async(queue, song) => {
         if(queue.shuffle) shuffleStyle = ButtonStyle.Primary;
         else shuffleStyle = ButtonStyle.Secondary;
 
-        let interaction = client.interactionConfiguration[queue.id+song.user.id];
         let row = new ActionRowBuilder()
             .setComponents([
                 new ButtonBuilder()
@@ -86,14 +85,21 @@ clientPlayer.on("playSong", async(queue, song) => {
             .setThumbnail(song.thumbnail)
             .setDescription(`[${song.title}](${song.url})`)
             .setFooter({ text: `Requested by ${song.user.username}` });
-        let message = null;
         if(!client.messages[queue.id]) {
             client.messages[queue.id] = [];
-            if(interaction) {
-                message = await interaction.editReply({ embeds: [embed], components: [row] });
-                delete client.interactionConfiguration[queue.id+song.user.id];
+
+            let message = null;
+            let interaction = client.interactionConfiguration[queue.id+song.user.id];
+            try {
+                if(interaction) {
+                    message = await interaction.editReply({ embeds: [embed], components: [row] });
+                    delete client.interactionConfiguration[queue.id+song.user.id];
+                }
+                else message = await song.textChannel.send({ embeds: [embed], components: [row] });
+            } catch (error) {
+                console.log(error);
+                message = await song.textChannel.send({ embeds: [embed], components: [row] });
             }
-            else message = await song.textChannel.send({ embeds: [embed], components: [row] });
 
             client.messages[queue.id].push(message);
             client.messages[queue.id] = Array.from(new Set(client.messages[queue.id]));

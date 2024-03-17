@@ -11,7 +11,6 @@ const {
 const {
     stream
 } = require("play-dl");
-const { Spotify } = require("spotify-info.js");
 const EventEmitter = require("node:events");
 const Collection = require("./Collection");
 
@@ -79,6 +78,27 @@ function youtube_playlist_parser(url){
 
 /**
  * 
+ * @param {string} url 
+ * @returns 
+ */
+function getSpotifyId(url) {
+    const trackRegex = /track\/(\w+)/;
+    const playlistRegex = /playlist\/(\w+)/;
+    const albumRegex = /album\/(\w+)/;
+
+    if (trackRegex.test(url)) {
+        return url.match(trackRegex)[1];
+    } else if (playlistRegex.test(url)) {
+        return url.match(playlistRegex)[1];
+    } else if (albumRegex.test(url)) {
+        return url.match(albumRegex)[1];
+    } else {
+        return null;
+    }
+}
+
+/**
+ * 
  * @param {string} query 
  * @param {{ytKey:string,spotifyCredentials:{clientID:string,clientSecret:string}}} config
  */
@@ -87,10 +107,16 @@ async function getInfoTrack(query, config) {
     let track = null;
     let url = query.split(" ")[0];
 
-    const spotify = new Spotify({
-        clientID: spotifyCredentials.clientID,
-        clientSecret: spotifyCredentials.clientSecret
+    let { clientID, clientSecret } = spotifyCredentials;
+    let response = await fetch("https://accounts.spotify.com/api/token", {
+        method: "POST",
+        headers: {
+            'Authorization': `Basic ${Buffer.from(`${clientID}:${clientSecret}`).toString("base64")}`
+        },
+        body: new URLSearchParams({ grant_type: 'client_credentials' })
     });
+    let { access_token, token_type } = await response.json();
+
     if(regex.yt.video.test(url)) {
         let trackInfo = await ytdl.getInfo(url);
         track = {
@@ -130,7 +156,13 @@ async function getInfoTrack(query, config) {
         track = items;
     }
     else if(regex.sp.track.test(url)) {
-        let trackInfo = await spotify.getTrackByURL(url);
+        let response = await fetch(`https://api.spotify.com/v1/tracks/${getSpotifyId(url)}`, {
+            method: "GET",
+            headers: {
+                'Authorization': `${token_type} ${access_token}`
+            }
+        });
+        let trackInfo = await response.json();
         let index = listedSongs.map(i => i.id).indexOf(trackInfo.id);
 
         let youtubeURL;
@@ -157,7 +189,13 @@ async function getInfoTrack(query, config) {
         }
     }
     else if(regex.sp.playlist.test(url)) {
-        let playlist = await spotify.getPlaylistByURL(url);
+        let response = await fetch(`https://api.spotify.com/v1/playlists/${getSpotifyId(url)}`, {
+            method: "GET",
+            headers: {
+                'Authorization': `${token_type} ${access_token}`
+            }
+        });
+        let playlist = await response.json();
         let items = [];
         for (let i = 0; i < playlist.tracks.items.length; i++) {
             let song = playlist.tracks.items[i].track;
@@ -190,7 +228,13 @@ async function getInfoTrack(query, config) {
         track = items;
     }
     else if(regex.sp.album.test(url)) {
-        let album = await spotify.getAlbumByURL(url);
+        let response = await fetch(`https://api.spotify.com/v1/albums/${getSpotifyId(url)}`, {
+            method: "GET",
+            headers: {
+                'Authorization': `${token_type} ${access_token}`
+            }
+        });
+        let album = await response.json();
         let items = [];
         for (let i = 0; i < album.tracks.items.length; i++) {
             let song = playlist.tracks.items[i];
