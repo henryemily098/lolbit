@@ -27,9 +27,9 @@ const regex = {
         playlist: /^.*(list=)([^#\&\?]*).*/gi
     },
     sp: {
-        track: /^https:\/\/open\.spotify\.com\/album\/([a-zA-Z0-9]+)(\?|$)/,
-        album: /^https:\/\/open\.spotify\.com\/playlist\/([a-zA-Z0-9]+)(\?|$)/,
-        playlist: /^https:\/\/open\.spotify\.com\/track\/([a-zA-Z0-9]+)(\?|$)/,
+        track: /^https:\/\/open\.spotify\.com\/track\/([a-zA-Z0-9]+)(\?|$)/,
+        album: /^https:\/\/open\.spotify\.com\/album\/([a-zA-Z0-9]+)(\?|$)/,
+        playlist: /^https:\/\/open\.spotify\.com\/playlist\/([a-zA-Z0-9]+)(\?|$)/,
         mobile: /^(https?:\/\/)?(spotify\.)?(link)\/.+$/gi
     },
     sc: {
