@@ -528,7 +528,8 @@ class ClientPlayer {
                         
                         let strm = null;
                         try {
-                            strm = await stream(nextSong.source === "spotify" ? nextSong.youtube_url : nextSong.url);
+                            if(nextSong.source === "spotify" || nextSong.source === "youtube") strm = await stream(nextSong.source === "spotify" ? nextSong.youtube_url : nextSong.url);
+                            else strm = { stream: await scdl.downloadFormat(nextSong.url, scdl.FORMATS.MP3), type: StreamType.Arbitrary };
                         } catch (error) {
                             console.log(error);
                         }
