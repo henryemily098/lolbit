@@ -308,7 +308,7 @@ client.on(Events.InteractionCreate, async(interaction) => {
             }
 
             let restricts = ["shufflequeue", "playpause", "loopqueue"];
-            if(restricts.includes(interaction.customId)) {
+            if(restricts.includes(method)) {
                 let confirm = false;
                 for (let i = 0; i < interaction.member.roles.cache.toJSON().length; i++) {
                     let role = interaction.member.roles.cache.toJSON()[i];
