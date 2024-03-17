@@ -128,7 +128,7 @@ clientPlayer.on("addSong", async(queue, song) => {
 });
 clientPlayer.on("addList", async(queue, songs) => {
     try {
-        let interaction = client.interactionConfiguration[queue.id+song.user.id];
+        let interaction = client.interactionConfiguration[queue.id+songs[0].user.id];
         let embed = new EmbedBuilder()
             .setColor(client.color)
             .setAuthor({
@@ -136,7 +136,7 @@ clientPlayer.on("addList", async(queue, songs) => {
                 iconURL: client.user.displayAvatarURL({ size: 1024 })
             })
         await interaction.editReply({ embeds: [embed] });
-        delete client.interactionConfiguration[queue.id+song.user.id];
+        delete client.interactionConfiguration[queue.id+songs[0].user.id];
     } catch (error) {
         console.log(error);
     }
