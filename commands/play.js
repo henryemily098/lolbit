@@ -80,7 +80,7 @@ module.exports.data = {
     options: [
         {
             name: "query",
-            description: "Playing music",
+            description: "Input a valid url or title",
             type: 3,
             required: true
         }

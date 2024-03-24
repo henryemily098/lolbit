@@ -336,11 +336,25 @@ class ClientPlayer {
      * @param {import("discord.js").VoiceBasedChannel} voiceChannel 
      */
     createConnection(voiceChannel) {
-        return joinVoiceChannel({
-            channelId: voiceChannel.id,
+        let connection = joinVoiceChannel({
             guildId: voiceChannel.guildId,
+            channelId: voiceChannel.id,
             adapterCreator: voiceChannel.guild.voiceAdapterCreator
         });
+
+        connection.on("stateChange", (oldState, newState) => {
+            const oldNetworking = Reflect.get(oldState, 'networking');
+            const newNetworking = Reflect.get(newState, 'networking');
+          
+            const networkStateChangeHandler = (oldNetworkState, newNetworkState) => {
+              const newUdp = Reflect.get(newNetworkState, 'udp');
+              clearInterval(newUdp?.keepAliveInterval);
+            }
+          
+            oldNetworking?.off('stateChange', networkStateChangeHandler);
+            newNetworking?.on('stateChange', networkStateChangeHandler);
+        });
+        return connection;
     }
 
     /**
@@ -371,6 +385,7 @@ class ClientPlayer {
         let queue = this.queues.get(guildId)
         let player = this.players.get(guildId);
         let connection = this.getConnection(guildId);
+        let config = this.config;
         return queue ? {
             id: guildId,
             songs: [...queue.songs].map(song => {
@@ -400,6 +415,54 @@ class ClientPlayer {
             connection: connection,
             djUser: queue.djUser ? this.client.users.cache.get(queue.djUser.id) : null,
             votes: [...queue.votes].map(userId => `${userId}`),
+            player: player,
+            /**
+             * 
+             * @param {string} query 
+             * @param {{textChannel:import("discord.js").TextBasedChannel,user:import("discord.js").User}} configuration
+             */
+            async addSong(query, configuration) {
+                let track = null;
+                let { textChannel, user } = configuration;
+                let { googleKey, spotifyCredentials } = config;
+                try {
+                    track = await getInfoTrack(query, {
+                        ytKey: googleKey,
+                        spotifyCredentials: spotifyCredentials
+                    });
+                    if(Array.isArray(track)) track = track.map(song => {
+                        song["id"] = generateID();
+                        song["user"] = user;
+                        song["textChannel"] = textChannel;
+                        return song;
+                    });
+                    else {
+                        track["id"] = generateID();
+                        track["user"] = user;
+                        track["textChannel"] = textChannel;
+                    }
+                } catch (error) {
+                    console.log(error);
+                }
+                if(!track) return new Error("Cannot found song!");
+
+                if(Array.isArray(track)) {
+                    for (let i = 0; i < track.length; i++) {
+                        track[i]["position"] = queue.songs.length;
+                        queue.songs.push(track[i]);
+                        this.songs.push(track[i]);
+                    }
+                }
+                else {
+                    track["position"] = queue.songs.length;
+                    queue.songs.push(track);
+                    this.songs.push(track);
+                }
+
+                if(Array.isArray(track)) event.emit("addList", { guildId: textChannel.guildId, songs: track });
+                else event.emit("addSong", { guildId: textChannel.guildId, song: track });
+                return this;
+            },
             /**
              * @readonly Delete entire queue
              */
@@ -483,11 +546,25 @@ class ClientPlayer {
                 return this;
             },
             skip() {
-                player.stop();
                 if(this.loop !== 2) {
                     if(this.loop === 1 && this.position === (this.songs.length - 1)) this.position = 0;
                     else this.position++;
                 }
+                player.stop();
+                return this;
+            },
+            /**
+             * 
+             * @param {number} number 
+             * @returns 
+             */
+            jumpTo(number) {
+                if(number < 1 || number > queue.songs.length) return console.error(`You can't input more than ${queue.songs.length > 1 ? `${queue.songs.length} or less than 1` : "1"}!`);
+                
+                queue.position = number - 2;
+                this.position = number - 1;
+                
+                player.stop();
                 return this;
             },
             pause() {
@@ -590,6 +667,7 @@ class ClientPlayer {
                         const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm.type });
                         resource.volume.setVolume(queue.volume / 100);
                         player.play(resource);
+                        event.emit("playSong", { guildId, song: nextSong });
                     }
                     playTrack();
                 }
@@ -661,13 +739,6 @@ class ClientPlayer {
 
         if(!player) {
             player = createAudioPlayer()
-                .on(AudioPlayerStatus.Playing, () => {
-                    let queue = this.queues.get(textChannel.guildId);
-                    if(!queue) return;
-
-                    let song = queue.songs[queue.position];
-                    event.emit("playSong", { guildId: textChannel.guildId, song });
-                })
                 .on(AudioPlayerStatus.Idle, () => {
                     let queue = this.queues.get(textChannel.guildId);
                     if(!queue) return;
@@ -679,34 +750,24 @@ class ClientPlayer {
                         else queue.position++;
                     }
                     event.emit("finishSong", { guildId: textChannel.guildId, song });
+                })
+                .on("error", (error) => {
+                    console.log(error);
+
+                    let queue = this.queues.get(textChannel.guildId);
+                    if(!queue) return;
+
+                    queue.votes = [];
+                    event.emit("finishSong", { guildId: textChannel.guildId, song: queue.songs[queue.position] });
                 });
             this.players.set(textChannel.guildId, player);
         }
         if(queue) {
             if(Array.isArray(video)) event.emit("addList", { guildId: textChannel.guildId, songs: video });
-            else event.emit("addSong", { guildId: textChannel.guildId, song: video })
+            else event.emit("addSong", { guildId: textChannel.guildId, song: video });
         }
         else {
-            if(!connection) {
-                connection = joinVoiceChannel({
-                    guildId: textChannel.guildId,
-                    channelId: voiceChannel.id,
-                    adapterCreator: textChannel.guild.voiceAdapterCreator
-                });
-    
-                connection.on("stateChange", (oldState, newState) => {
-                    const oldNetworking = Reflect.get(oldState, 'networking');
-                    const newNetworking = Reflect.get(newState, 'networking');
-                  
-                    const networkStateChangeHandler = (oldNetworkState, newNetworkState) => {
-                      const newUdp = Reflect.get(newNetworkState, 'udp');
-                      clearInterval(newUdp?.keepAliveInterval);
-                    }
-                  
-                    oldNetworking?.off('stateChange', networkStateChangeHandler);
-                    newNetworking?.on('stateChange', networkStateChangeHandler);
-                });
-            }
+            if(!connection) connection = this.createConnection(voiceChannel);
 
             let strm = null;
             let position = queue ? queue.position : queueConstruct.position;
@@ -725,6 +786,8 @@ class ClientPlayer {
 
             await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
             connection.subscribe(player);
+
+            event.emit("playSong", { guildId: textChannel.guildId, song: Array.isArray(video) ? video[position] : video });
         }
     }
 }

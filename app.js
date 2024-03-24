@@ -1,6 +1,7 @@
 require("dotenv").config();
 const fs = require("fs");
 const http = require("http");
+const fetch = require("node-fetch").default;
 const express = require("express");
 const {
     ClientPlayer,
@@ -213,46 +214,10 @@ client.on(Events.ClientReady, () => {
             }
         }
     }
-    setInterval(messageCheck, 2500);
-});
-client.on(Events.VoiceStateUpdate, async(oldState, newState) => {
-    let queue = clientPlayer.getQueue(oldState.guild.id);
-    if(queue) {
-        if(oldState.member.user.id === client.user.id) {
-            if(newState.channel) {
-                let members = newState.channel.members.filter(member => !member.user.bot || member.user.id !== client.user.id);
-                let member = members.at(Math.floor(Math.random()*members.size));
-                queue.setDJUser(member.user);
-            }
-            else {
-                let messages = client.messages[queue.id];
-                if(messages && messages[0]) {
-                    try {
-                        await messages[0].delete();
-                    } catch (error) {
-                        console.log(error);
-                    }
-                    delete client.messages[queue.id];
-                }
-                queue.delete();
-            }
-        }
-        else {
-            if(newState.channel) {
-                let members = newState.channel.members.filter(member => !member.user.bot || member.user.id !== client.user.id);
-                if(!members.size) queue.setDJUser(newState.member.user);
-            }
-            else {
-                if(oldState.member.user.id !== queue.djUser.id) return;
-                let members = oldState.channel.members.filter(member => !member.user.bot || member.user.id !== client.user.id);
-                if(members.size) {
-                    let member = members.at(Math.floor(Math.random()*members.size));
-                    queue.setDJUser(member.user);
-                }
-                else queue.setDJUser(null);
-            }
-        }
-    }
+    setInterval(() => {
+        messageCheck();
+        checkInterval();
+    }, 2500);
 });
 client.on(Events.InteractionCreate, async(interaction) => {
     if(interaction.isCommand()) {
@@ -297,9 +262,9 @@ client.on(Events.InteractionCreate, async(interaction) => {
                         inline: true
                     }
                 ]);
-            logChannel
-                .send({ embeds: [embed] })
-                .catch(console.log);
+            // logChannel
+            //     .send({ embeds: [embed] })
+            //     .catch(console.log);
         }
 
         let commandName = interaction.commandName;
@@ -500,7 +465,7 @@ client.on(Events.InteractionCreate, async(interaction) => {
                         .join("\n")
                     )
                     .setFooter({
-                        text: `Total songs: ${queue.loop === 0 ? display.length : queue.songs.length}`
+                        text: `Page 1/${Math.ceil(display.length / 5)} │ Total songs: ${queue.loop === 0 ? display.length : queue.songs.length}`
                     });
                 try {
                     let body = {
@@ -510,7 +475,7 @@ client.on(Events.InteractionCreate, async(interaction) => {
                     }
                     if(display.length > 5) body["components"] = [row];
                     let message = await interaction.reply(body);
-                    client.pageQueue[interaction.guildId+message.id] = {
+                    client.pageQueue[interaction.guildId+interaction.user.id] = {
                         number: 1,
                         index: 0
                     };
@@ -527,7 +492,7 @@ client.on(Events.InteractionCreate, async(interaction) => {
             let display = [...nextSongs];
             if(queue.loop !== 0) display.push(...previousSongs);
 
-            let page = client.pageQueue[interaction.guildId+interaction.message.id];
+            let page = client.pageQueue[interaction.guildId+interaction.user.id];
             if(!page) {
                 try {
                     await interaction.reply({
@@ -539,8 +504,8 @@ client.on(Events.InteractionCreate, async(interaction) => {
                 }
                 return;
             }
-            let { number, index:indexPage } = page;
 
+            let { number, index:indexPage } = page;
             if(display.length > 5) {
                 if(method === "left") {
                     number--;
@@ -595,9 +560,23 @@ client.on(Events.InteractionCreate, async(interaction) => {
                 if(display.length > 5) body["components"] = [row];
                 await interaction.update(body);
             } catch (error) {
-                
+                console.log(error);
             }
         }
     }
 });
 client.login(process.env.TOKEN);
+
+function checkInterval() {
+    let urls = [
+        process.env.HELPY
+    ];
+    urls.forEach(async url => {
+        try {
+            await fetch(url);
+            console.log(`Status of ${url}: work!`);
+        } catch (error) {
+            console.log(error);
+        }
+    })
+}
