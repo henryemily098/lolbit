@@ -1,5 +1,6 @@
 require("dotenv").config();
 const fs = require("fs");
+const cors = require("cors");
 const http = require("http");
 const fetch = require("node-fetch").default;
 const express = require("express");
@@ -46,6 +47,12 @@ const clientPlayer = new ClientPlayer(client, {
     }
 });
 
+app.use(cors({
+    origin: [
+        process.env.HELPY,
+        process.env.GLITCHTRAP
+    ]
+}));
 app.get("/commands", (req, res) => res.status(200).send(client.commands.map(i => i.data)));
 app.get("*", (req, res) => res.send("Ready!"));
 clientPlayer.on("playSong", async(queue, song) => {
@@ -179,16 +186,16 @@ for (let i = 0; i < files.length; i++) {
     if(command.data) client.commands.set(command.data.name, command);
 }
 
-// (async() => {
-//     try {
-//         await rest.put(
-//             Routes.applicationCommands(process.env.CLIENT_ID),
-//             { body: client.commands.map(i => i.data) }
-//         );
-//     } catch (error) {
-//         console.log(error);
-//     }
-// })();
+(async() => {
+    try {
+        await rest.put(
+            Routes.applicationCommands(process.env.CLIENT_ID),
+            { body: client.commands.map(i => i.data) }
+        );
+    } catch (error) {
+        console.log(error);
+    }
+})();
 
 client.on(Events.ClientReady, () => {
     console.log(`[SERVER] ${client.user.username} it's ready!`);
