@@ -397,10 +397,19 @@ class ClientPlayer {
                     position: parseInt(song.position),
                     thumbnail: song.thumbnail ? `${song.thumbnail}` : null,
                     duration: parseInt(song.duration),
-                    artist: song.artist ? {
-                        name: song.artist.name ? `${song.artist.name}` : null,
-                        url: song.artist.name ? `${song.artist.url}` : null
-                    } : null,
+                    artist: song.artist ?
+                        Array.isArray(song.artist)
+                        ? [...song.artist].map(artist => {
+                            return {
+                                name: artist.name ? `${artist.name}` : null,
+                                url: artist.name ? `${artist.url}` : null
+                            }
+                        })
+                        : {
+                            name: song.artist.name ? `${song.artist.name}` : null,
+                            url: song.artist.name ? `${song.artist.url}` : null
+                        }
+                    : null,
                     source: `${song.source}`,
                     youtube_url: song.source === "spotify" ? `${song.youtube_url}` : null,
                     user: this.client.users.cache.get(song.user.id),
@@ -480,7 +489,7 @@ class ClientPlayer {
 
                 if(queue.shuffle) {
                     let songs = shuffleArray(
-                        this.songs.map((song, index) => {
+                        this.songs.sort((a, b) => a.position - b.position).map((song, index) => {
                             song["position"] = index;
                             return song;
                         })
@@ -541,7 +550,7 @@ class ClientPlayer {
                     else queue.position = queue.position - 2;
                 }
 
-                this.position = queue.position;
+                this.position = queue.position+1;
                 player.stop();
                 return this;
             },
@@ -565,6 +574,20 @@ class ClientPlayer {
                 this.position = number - 1;
                 
                 player.stop();
+                return this;
+            },
+            /**
+             * 
+             * @param {number} newDuration 
+             */
+            async seek(newDuration) {
+                let data = null;
+                let currentSong = this.songs[this.position];
+                try {
+                    if(currentSong.source === "soundcloud") scdl
+                } catch (error) {
+                    
+                }
                 return this;
             },
             pause() {
@@ -625,57 +648,59 @@ class ClientPlayer {
      * @param {Function} callback 
      */
     on(Events, callback) {
-        event
-            .on("playSong", (data) => {
-                let { guildId, song } = data;
-                let queue = this.getQueue(guildId);
-                if(Events === "playSong") callback(queue, song);
-            })
-            .on("addSong", (data) => {
-                let { guildId, song } = data;
-                let queue = this.getQueue(guildId);
-                if(Events === "addSong") callback(queue, song);
-            })
-            .on("addList", (data) => {
-                let { guildId, songs } = data;
-                let queue = this.getQueue(guildId);
-                if(Events === "addList") callback(queue, songs);
-            })
-            .on("finishSong", async(data) => {
-                let { guildId, song } = data;
-                let queue = this.getQueue(guildId);
+        if(Events === "playSong") event.on("playSong", (data) => {
+            let { guildId, song } = data;
+            let queue = this.getQueue(guildId);
+            if(Events === "playSong") callback(queue, song);
+        });
+        if(Events === "addSong") event.on("addSong", (data) => {
+            let { guildId, song } = data;
+            let queue = this.getQueue(guildId);
+            if(Events === "addSong") callback(queue, song);
+        });
+        if(Events === "addList") event.on("addList", (data) => {
+            let { guildId, songs } = data;
+            let queue = this.getQueue(guildId);
+            if(Events === "addList") callback(queue, songs);
+        })
+        if(Events === "finishSong") event.on("finishSong", (data) => {
+            let { guildId, song } = data;
+            let queue = this.getQueue(guildId);
 
-                if(Events === "finishSong") callback(queue, song);
-                if(!queue || queue.position > (queue.songs.length - 1)) event.emit("finishQueue", queue);
-                else {
-                    const playTrack = async() => {
-                        let nextSong = queue.songs[queue.position];
-                        let player = this.players.get(guildId);
-                        
-                        let strm = null;
-                        try {
-                            if(nextSong.source === "spotify" || nextSong.source === "youtube") strm = await stream(nextSong.source === "spotify" ? nextSong.youtube_url : nextSong.url);
-                            else strm = { stream: await scdl.downloadFormat(nextSong.url, scdl.FORMATS.MP3), type: StreamType.Arbitrary };
-                        } catch (error) {
-                            console.log(error);
-                        }
-                        if(!strm) {
-                            setTimeout(playTrack, 2500);
-                            return;
-                        }
+            if(Events === "finishSong") callback(queue, song);
+            if(!queue || queue.position > (queue.songs.length - 1)) event.emit("finishQueue", queue);
+            else {
+                let nextSong = queue.songs[queue.position];
+                let player = this.players.get(guildId);
+                event.emit("playSong", { guildId: guildId, song: nextSong });
 
-                        const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm.type });
-                        resource.volume.setVolume(queue.volume / 100);
-                        player.play(resource);
-                        event.emit("playSong", { guildId, song: nextSong });
+                const playTrack = async() => {
+                    let strm = null;
+                    try {
+                        if(nextSong.source === "spotify" || nextSong.source === "youtube") strm = await stream(nextSong.source === "spotify" ? nextSong.youtube_url : nextSong.url);
+                        else strm = { stream: await scdl.downloadFormat(nextSong.url, scdl.FORMATS.MP3), type: StreamType.Arbitrary };
+                    } catch (error) {
+                        console.log(error);
                     }
-                    playTrack();
+                    if(!strm) {
+                        setTimeout(playTrack, 5000);
+                        return;
+                    }
+
+                    const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm.type });
+                    resource.volume.setVolume(queue.volume / 100);
+                    player.play(resource);
+                    return { guildId, song: nextSong };
                 }
-            })
-            .on("finishQueue", (queue) => {
-                if(queue) this.queues.delete(queue.id);
-                if(Events === "finishQueue") callback(queue);
-            });
+                playTrack();
+            }
+        });
+        if(Events === "finishQueue") event.on("finishQueue", (queue) => {
+            let serverQueue = queue;
+            if(queue) queue.delete();
+            if(Events === "finishQueue") callback(serverQueue);
+        });
+            
         return this;
     }
 
@@ -769,25 +794,33 @@ class ClientPlayer {
         else {
             if(!connection) connection = this.createConnection(voiceChannel);
 
-            let strm = null;
-            let position = queue ? queue.position : queueConstruct.position;
-            if((Array.isArray(video) && (video[position].source === "youtube" || video[position].source === "spotify")) || (video.source === "youtube" || video.source === "spotify")) {
-                strm = await stream(Array.isArray(video)
-                    ? video[position].source === "spotify" ? video[position].youtube_url : video[position].url
-                    : video.source === "spotify" ? video.youtube_url : video.url
-                );
+            const playTrack = async() => {
+                try {
+                    let strm = null;
+                    let position = queue ? queue.position : queueConstruct.position;
+                    if((Array.isArray(video) && (video[position].source === "youtube" || video[position].source === "spotify")) || (video.source === "youtube" || video.source === "spotify")) {
+                        strm = await stream(Array.isArray(video)
+                            ? video[position].source === "spotify" ? video[position].youtube_url : video[position].url
+                            : video.source === "spotify" ? video.youtube_url : video.url
+                        );
+                    }
+                    else strm = { stream: await scdl.downloadFormat(Array.isArray(video) ? video[position].url : video.url, scdl.FORMATS.MP3), type: StreamType.Arbitrary };
+                    this.queues.set(textChannel.guildId, queueConstruct);
+
+                    const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm.type });
+                    resource.volume.setVolume(queue ? queue.volume / 100 : queueConstruct.volume / 100);
+                    player.play(resource);
+
+                    await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+                    connection.subscribe(player);
+
+                    event.emit("playSong", { guildId: textChannel.guildId, song: Array.isArray(video) ? video[position] : video });
+                } catch (error) {
+                    console.log(error);
+                    setTimeout(playTrack, 3000);
+                }
             }
-            else strm = { stream: await scdl.downloadFormat(Array.isArray(video) ? video[position].url : video.url, scdl.FORMATS.MP3), type: StreamType.Arbitrary };
-            this.queues.set(textChannel.guildId, queueConstruct);
-
-            const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm.type });
-            resource.volume.setVolume(queue ? queue.volume / 100 : queueConstruct.volume / 100);
-            player.play(resource);
-
-            await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
-            connection.subscribe(player);
-
-            event.emit("playSong", { guildId: textChannel.guildId, song: Array.isArray(video) ? video[position] : video });
+            playTrack();
         }
     }
 }
