@@ -55,6 +55,7 @@ app.use(cors({
 }));
 app.get("/commands", (req, res) => res.status(200).send(client.commands.map(i => i.data)));
 app.get("*", (req, res) => res.send("Ready!"));
+
 clientPlayer.on("playSong", async(queue, song) => {
     try {
         let loop;
@@ -95,8 +96,6 @@ clientPlayer.on("playSong", async(queue, song) => {
             .setDescription(`[${song.title}](${song.url})`)
             .setFooter({ text: `Requested by ${song.user.username}` });
         if(!client.messages[queue.id]) {
-            client.messages[queue.id] = [];
-
             let message = null;
             let interaction = client.interactionConfiguration[queue.id+song.user.id];
             try {
@@ -109,9 +108,7 @@ clientPlayer.on("playSong", async(queue, song) => {
                 console.log(error);
                 message = await song.textChannel.send({ embeds: [embed], components: [row] });
             }
-
-            client.messages[queue.id].push(message);
-            client.messages[queue.id] = Array.from(new Set(client.messages[queue.id]));
+            client.messages[queue.id] = message;
         }
     } catch (error) {
         console.log(error);
@@ -152,10 +149,10 @@ clientPlayer.on("addList", async(queue, songs) => {
 });
 clientPlayer.on("finishSong", async(queue) => {
     if(queue) {
-        let messages = client.messages[queue.id];
-        if(messages && messages[0]) {
+        let message = client.messages[queue.id];
+        if(message) {
             try {
-                await messages[0].delete();
+                await message.delete();
             } catch (error) {
                 console.log(error);
             }
@@ -270,9 +267,9 @@ client.on(Events.InteractionCreate, async(interaction) => {
                         inline: true
                     }
                 ]);
-            // logChannel
-            //     .send({ embeds: [embed] })
-            //     .catch(console.log);
+            logChannel
+                .send({ embeds: [embed] })
+                .catch(console.log);
         }
 
         let commandName = interaction.commandName;
@@ -328,12 +325,12 @@ client.on(Events.InteractionCreate, async(interaction) => {
         }
 
         if(type === "control") {
-            let messages = client.messages[interaction.guildId];
-            if(!queue || !messages[0] || messages[0].id !== interaction.message.id) {
+            let message = client.messages[interaction.guildId];
+            if(!queue || !message|| message.id !== interaction.message.id) {
                 try {
                     await interaction.message.delete();
                     await interaction.reply({
-                        content: `This is not current control!${messages && messages[0] ? ` [Click Here For the player control](${messages[0].url})!` : ""}`,
+                        content: `This is not current control!${message ? ` [Click Here For the player control](${message.url})!` : ""}`,
                         ephemeral: true
                     });
                 } catch (error) {
@@ -482,7 +479,7 @@ client.on(Events.InteractionCreate, async(interaction) => {
                         ephemeral: true
                     }
                     if(display.length > 5) body["components"] = [row];
-                    let message = await interaction.reply(body);
+                    await interaction.reply(body);
                     client.pageQueue[interaction.guildId+interaction.user.id] = {
                         number: 1,
                         index: 0
@@ -584,7 +581,6 @@ function checkInterval() {
             await fetch(url);
             console.log(`Status of ${url}: work!`);
         } catch (error) {
-            console.log(error);
         }
     })
 }

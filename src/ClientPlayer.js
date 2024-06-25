@@ -6,15 +6,14 @@ const {
     getVoiceConnection,
     joinVoiceChannel,
     StreamType,
+    VoiceConnectionDisconnectReason,
     VoiceConnectionStatus
 } = require("@discordjs/voice");
-const {
-    stream
-} = require("play-dl");
 const EventEmitter = require("node:events");
 const Collection = require("./Collection");
 
 const ytdl = require("ytdl-core");
+const ytdlDiscord = require("@distube/ytdl-core");
 const scdl = require("soundcloud-downloader").default;
 const scrape = require("scrape-youtube").youtube;
 const listedSongs = require("./util/listedSpotifySongs");
@@ -336,24 +335,41 @@ class ClientPlayer {
      * @param {import("discord.js").VoiceBasedChannel} voiceChannel 
      */
     createConnection(voiceChannel) {
+        let queue = this.getQueue(voiceChannel.guildId);
         let connection = joinVoiceChannel({
             guildId: voiceChannel.guildId,
             channelId: voiceChannel.id,
             adapterCreator: voiceChannel.guild.voiceAdapterCreator
         });
 
-        connection.on("stateChange", (oldState, newState) => {
-            const oldNetworking = Reflect.get(oldState, 'networking');
-            const newNetworking = Reflect.get(newState, 'networking');
-          
-            const networkStateChangeHandler = (oldNetworkState, newNetworkState) => {
-              const newUdp = Reflect.get(newNetworkState, 'udp');
-              clearInterval(newUdp?.keepAliveInterval);
-            }
-          
-            oldNetworking?.off('stateChange', networkStateChangeHandler);
-            newNetworking?.on('stateChange', networkStateChangeHandler);
-        });
+        connection
+            .on("error", (error) => {
+                let data = {
+                    message: error.message,
+                    code: 1002
+                }
+                event.emit("error", data);
+            })
+            .on("stateChange", (oldState, newState) => {
+                const oldNetworking = Reflect.get(oldState, 'networking');
+                const newNetworking = Reflect.get(newState, 'networking');
+            
+                const networkStateChangeHandler = (oldNetworkState, newNetworkState) => {
+                    const newUdp = Reflect.get(newNetworkState, 'udp');
+                    clearInterval(newUdp?.keepAliveInterval);
+                }
+            
+                oldNetworking?.off('stateChange', networkStateChangeHandler);
+                newNetworking?.on('stateChange', networkStateChangeHandler);
+            })
+            .on(VoiceConnectionStatus.Disconnected, (_, newState) => {
+                if(newState.reason === VoiceConnectionDisconnectReason.Manual && queue) queue.delete();
+                else if(connection.rejoinAttempts < 5) {
+                    setTimeout(
+                        () => { connection.rejoin(); }, (connection.rejoinAttempts + 1) * 5e3,
+                    ).unref();
+                }
+            });
         return connection;
     }
 
@@ -576,20 +592,6 @@ class ClientPlayer {
                 player.stop();
                 return this;
             },
-            /**
-             * 
-             * @param {number} newDuration 
-             */
-            async seek(newDuration) {
-                let data = null;
-                let currentSong = this.songs[this.position];
-                try {
-                    if(currentSong.source === "soundcloud") scdl
-                } catch (error) {
-                    
-                }
-                return this;
-            },
             pause() {
                 queue.playing = false;
                 this.playing = false;
@@ -644,41 +646,63 @@ class ClientPlayer {
     }
     /**
      * 
-     * @param {"addSong"|"playSong"|"finishSong"|"finishQueue"|"addList"} Events 
+     * @param {"addSong"|"playSong"|"finishSong"|"finishQueue"|"addList"|"error"} Events 
      * @param {Function} callback 
      */
     on(Events, callback) {
         if(Events === "playSong") event.on("playSong", (data) => {
             let { guildId, song } = data;
             let queue = this.getQueue(guildId);
-            if(Events === "playSong") callback(queue, song);
+            if(callback && typeof callback === "function") callback(queue, song);
         });
         if(Events === "addSong") event.on("addSong", (data) => {
             let { guildId, song } = data;
             let queue = this.getQueue(guildId);
-            if(Events === "addSong") callback(queue, song);
+            if(callback && typeof callback === "function") callback(queue, song);
         });
         if(Events === "addList") event.on("addList", (data) => {
             let { guildId, songs } = data;
             let queue = this.getQueue(guildId);
-            if(Events === "addList") callback(queue, songs);
+            if(callback && typeof callback === "function") callback(queue, songs);
         })
         if(Events === "finishSong") event.on("finishSong", (data) => {
             let { guildId, song } = data;
             let queue = this.getQueue(guildId);
 
-            if(Events === "finishSong") callback(queue, song);
+            if(callback && typeof callback === "function") callback(queue, song);
             if(!queue || queue.position > (queue.songs.length - 1)) event.emit("finishQueue", queue);
             else {
                 let nextSong = queue.songs[queue.position];
                 let player = this.players.get(guildId);
-                event.emit("playSong", { guildId: guildId, song: nextSong });
-
                 const playTrack = async() => {
                     let strm = null;
                     try {
-                        if(nextSong.source === "spotify" || nextSong.source === "youtube") strm = await stream(nextSong.source === "spotify" ? nextSong.youtube_url : nextSong.url);
-                        else strm = { stream: await scdl.downloadFormat(nextSong.url, scdl.FORMATS.MP3), type: StreamType.Arbitrary };
+                        if(nextSong.source === "spotify" || nextSong.source === "youtube") {
+                            strm = {
+                                stream: ytdlDiscord(
+                                    nextSong.source === "spotify" ? nextSong.youtube_url : nextSong.url,
+                                    {
+                                        filter: "audioonly",
+                                        highWaterMark: 1 << 62,
+                                        liveBuffer: 1 << 62,
+                                        dlChunkSize: 0,
+                                        quality: 'lowestaudio'
+                                    }
+                                )
+                                .on("error", () => {
+                                    let data = {
+                                        message: "There's something wrong with the audio player!",
+                                        code: 1001
+                                    }
+                                    event.emit("error", data);
+                                    event.emit("finishSong", { guildId, song: nextSong });
+                                })
+                            }
+                        }
+                        else strm = {
+                            stream: await scdl.downloadFormat(nextSong.url, scdl.FORMATS.MP3),
+                            type: StreamType.Arbitrary
+                        }
                     } catch (error) {
                         console.log(error);
                     }
@@ -687,10 +711,10 @@ class ClientPlayer {
                         return;
                     }
 
-                    const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm.type });
+                    const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm?.type || StreamType.Arbitrary });
                     resource.volume.setVolume(queue.volume / 100);
                     player.play(resource);
-                    return { guildId, song: nextSong };
+                    event.emit("playSong", { guildId: guildId, song: nextSong });
                 }
                 playTrack();
             }
@@ -698,9 +722,17 @@ class ClientPlayer {
         if(Events === "finishQueue") event.on("finishQueue", (queue) => {
             let serverQueue = queue;
             if(queue) queue.delete();
-            if(Events === "finishQueue") callback(serverQueue);
+            if(callback && typeof callback === "function") callback(serverQueue);
         });
-            
+        if(Events === "error") event.on("error", (error) => {
+            /**
+             * code list
+             * 1000 = Track information
+             * 1001 = Player error
+             * 1002 = Connection Error
+             */
+            if(callback && typeof callback === "function") callback(error);
+        });
         return this;
     }
 
@@ -724,6 +756,7 @@ class ClientPlayer {
             shuffle: false,
             position: 0,
             djUser: user,
+            resource: null,
             playing: true,
         }
 
@@ -747,7 +780,14 @@ class ClientPlayer {
         } catch (error) {
             console.log(error);
         }
-        if(!video) return new Error("Cannot find video!");
+        if(!video) {
+            let error = {
+                message: "There's something wrong when fetching track information!",
+                code: 1000
+            }
+            event.emit("error", error);
+            return;
+        }
 
         if(Array.isArray(video)) {
             for (let i = 0; i < video.length; i++) {
@@ -777,12 +817,16 @@ class ClientPlayer {
                     event.emit("finishSong", { guildId: textChannel.guildId, song });
                 })
                 .on("error", (error) => {
-                    console.log(error);
-
                     let queue = this.queues.get(textChannel.guildId);
                     if(!queue) return;
 
                     queue.votes = [];
+
+                    let data = {
+                        message: "There's something wrong with the audio player!",
+                        code: 1001
+                    }
+                    event.emit("error", data);
                     event.emit("finishSong", { guildId: textChannel.guildId, song: queue.songs[queue.position] });
                 });
             this.players.set(textChannel.guildId, player);
@@ -793,21 +837,47 @@ class ClientPlayer {
         }
         else {
             if(!connection) connection = this.createConnection(voiceChannel);
-
             const playTrack = async() => {
                 try {
                     let strm = null;
                     let position = queue ? queue.position : queueConstruct.position;
                     if((Array.isArray(video) && (video[position].source === "youtube" || video[position].source === "spotify")) || (video.source === "youtube" || video.source === "spotify")) {
-                        strm = await stream(Array.isArray(video)
-                            ? video[position].source === "spotify" ? video[position].youtube_url : video[position].url
-                            : video.source === "spotify" ? video.youtube_url : video.url
-                        );
+                        strm = {
+                            stream: ytdlDiscord(
+                                Array.isArray(video)
+                                ? video[position].source === "spotify" ? video[position].youtube_url : video[position].url
+                                : video.source === "spotify" ? video.youtube_url : video.url,
+                                {
+                                    filter: "audioonly",
+                                    highWaterMark: 1 << 62,
+                                    liveBuffer: 1 << 62,
+                                    dlChunkSize: 0,
+                                    quality: 'lowestaudio'
+                                }
+                            )
+                        }
                     }
-                    else strm = { stream: await scdl.downloadFormat(Array.isArray(video) ? video[position].url : video.url, scdl.FORMATS.MP3), type: StreamType.Arbitrary };
+                    else strm = {
+                        stream: await scdl.downloadFormat(Array.isArray(video) ? video[position].url : video.url, scdl.FORMATS.MP3),
+                        type: StreamType.Arbitrary
+                    }
                     this.queues.set(textChannel.guildId, queueConstruct);
 
-                    const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm.type });
+                    const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm?.type || StreamType.Arbitrary });
+                    resource.playStream
+                        .on("error", () => {
+                            let data = {
+                                message: "There's something wrong with the audio player!",
+                                code: 1001
+                            }
+                            event.emit("error", data);
+                            event.emit("finishSong", {
+                                guildId,
+                                song: Array.isArray(video)
+                                ? (video[position].source === "spotify" ? video[position].youtube_url : video[position].url)
+                                : (video.source === "spotify" ? video.youtube_url : video.url) }
+                            );
+                        });
                     resource.volume.setVolume(queue ? queue.volume / 100 : queueConstruct.volume / 100);
                     player.play(resource);
 
