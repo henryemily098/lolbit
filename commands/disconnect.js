@@ -67,17 +67,7 @@ module.exports.run = async(interaction) => {
         return;
     }
 
-    if(queue) {
-        let messages = interaction.client.messages[interaction.guildId];
-        if(messages && messages[0]) {
-            try {
-                await messages[0].delete();
-            } catch (error) {
-                console.log(error);
-            }
-        }
-        queue.leave();
-    }
+    if(queue) queue.leave();
     else interaction.client.player.destroyConnection(interaction.guildId);
 
     try {

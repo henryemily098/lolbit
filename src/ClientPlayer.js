@@ -9,11 +9,15 @@ const {
     VoiceConnectionDisconnectReason,
     VoiceConnectionStatus
 } = require("@discordjs/voice");
+const {
+    PassThrough
+} = require("node:stream");
 const EventEmitter = require("node:events");
 const Collection = require("./Collection");
 
 const ytdl = require("ytdl-core");
-const ytdlDiscord = require("@distube/ytdl-core");
+const ffmpeg = require("fluent-ffmpeg");
+const ffmpegPath = require("ffmpeg-static")
 const scdl = require("soundcloud-downloader").default;
 const scrape = require("scrape-youtube").youtube;
 const listedSongs = require("./util/listedSpotifySongs");
@@ -317,6 +321,8 @@ async function getInfoTrack(query, config) {
     return track;
 }
 
+ffmpeg.setFfmpegPath(ffmpegPath)
+
 class ClientPlayer {
     /**
      * 
@@ -432,8 +438,8 @@ class ClientPlayer {
                     textChannel: this.client.channels.cache.get(song.textChannel.id)
                 }
             }),
-            loop: queue.loop,
-            shuffle: queue.shuffle,
+            loop: parseInt(queue.loop),
+            shuffle: queue.shuffle ? true : false,
             volume: parseInt(queue.volume),
             position: parseInt(queue.position),
             playing: queue.playing ? true : false,
@@ -580,6 +586,80 @@ class ClientPlayer {
             },
             /**
              * 
+             * @param {number} seek in millieseconds
+             */
+            async seekTo(seek) {
+                let strm = null;
+                let song = queue.songs[queue.position];
+                try {
+                    if(song.source === "spotify" || song.source === "youtube") {
+                        strm = {
+                            stream: ytdl(
+                                song.source === "spotify" ? song.youtube_url : song.url,
+                                {
+                                    filter: "audioonly",
+                                    highWaterMark: 1 << 62,
+                                    liveBuffer: 1 << 62,
+                                    dlChunkSize: 0,
+                                    quality: 'lowestaudio',
+                                    begin: seek
+                                }
+                            )
+                            .on("error", () => {
+                                let data = {
+                                    message: "There's something wrong with the audio player!",
+                                    code: 1001
+                                }
+                                event.emit("error", data);
+                                event.emit("finishSong", { guildId, song });
+                            })
+                        }
+                    }
+                    else {
+                        const getStream = async(url, seekTime = 0) => {
+                            const stream = await scdl.downloadFormat(url, scdl.FORMATS.MP3);
+                            if (seekTime === 0) return stream;
+                          
+                            const seekStream = new PassThrough();
+                            ffmpeg(stream)
+                                .setStartTime(seekTime)
+                                .format('mp3')
+                                .pipe(seekStream);
+                          
+                            return seekStream;
+                        }
+                        strm = {
+                            stream: await getStream(song.url, seek),
+                            type: StreamType.Arbitrary
+                        }
+                    }
+                } catch (error) {
+                    console.log(error);
+                }
+                if(!strm) {
+                    setTimeout(playTrack, 5000);
+                    return;
+                }
+
+                const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm?.type || StreamType.Arbitrary });
+                resource.volume.setVolume(queue.volume / 100);
+                resource.playStream
+                    .on("error", () => {
+                        let data = {
+                            message: "There's something wrong with the audio player!",
+                            code: 1001
+                        }
+                        event.emit("error", data);
+                        event.emit("finishSong", {
+                            guildId,
+                            song
+                        });
+                    });
+                player.play(resource);
+                player.state.playbackDuration = seek;
+            },
+            /**
+             * 
              * @param {number} number 
              * @returns 
              */
@@ -606,6 +686,12 @@ class ClientPlayer {
             },
             leave() {
                 connection.destroy();
+                event.emit("finishSong", {
+                    guildId,
+                    song: queue.songs[queue.position],
+                    isDisconnected: true
+                });
+
                 this.connection = null;
                 this.delete();
             },
@@ -666,11 +752,11 @@ class ClientPlayer {
             if(callback && typeof callback === "function") callback(queue, songs);
         })
         if(Events === "finishSong") event.on("finishSong", (data) => {
-            let { guildId, song } = data;
+            let { guildId, song, isDisconnected } = data;
             let queue = this.getQueue(guildId);
 
             if(callback && typeof callback === "function") callback(queue, song);
-            if(!queue || queue.position > (queue.songs.length - 1)) event.emit("finishQueue", queue);
+            if(isDisconnected || (!queue || queue.position > (queue.songs.length - 1))) event.emit("finishQueue", queue);
             else {
                 let nextSong = queue.songs[queue.position];
                 let player = this.players.get(guildId);
@@ -679,7 +765,7 @@ class ClientPlayer {
                     try {
                         if(nextSong.source === "spotify" || nextSong.source === "youtube") {
                             strm = {
-                                stream: ytdlDiscord(
+                                stream: ytdl(
                                     nextSong.source === "spotify" ? nextSong.youtube_url : nextSong.url,
                                     {
                                         filter: "audioonly",
@@ -713,6 +799,18 @@ class ClientPlayer {
 
                     const resource = createAudioResource(strm.stream, { inlineVolume: true, inputType: strm?.type || StreamType.Arbitrary });
                     resource.volume.setVolume(queue.volume / 100);
+                    resource.playStream
+                        .on("error", () => {
+                            let data = {
+                                message: "There's something wrong with the audio player!",
+                                code: 1001
+                            }
+                            event.emit("error", data);
+                            event.emit("finishSong", {
+                                guildId,
+                                song: nextSong
+                            });
+                        });
                     player.play(resource);
                     event.emit("playSong", { guildId: guildId, song: nextSong });
                 }
@@ -843,7 +941,7 @@ class ClientPlayer {
                     let position = queue ? queue.position : queueConstruct.position;
                     if((Array.isArray(video) && (video[position].source === "youtube" || video[position].source === "spotify")) || (video.source === "youtube" || video.source === "spotify")) {
                         strm = {
-                            stream: ytdlDiscord(
+                            stream: ytdl(
                                 Array.isArray(video)
                                 ? video[position].source === "spotify" ? video[position].youtube_url : video[position].url
                                 : video.source === "spotify" ? video.youtube_url : video.url,

@@ -95,21 +95,20 @@ clientPlayer.on("playSong", async(queue, song) => {
             .setThumbnail(song.thumbnail)
             .setDescription(`[${song.title}](${song.url})`)
             .setFooter({ text: `Requested by ${song.user.username}` });
-        if(!client.messages[queue.id]) {
-            let message = null;
-            let interaction = client.interactionConfiguration[queue.id+song.user.id];
-            try {
-                if(interaction) {
-                    message = await interaction.editReply({ embeds: [embed], components: [row] });
-                    delete client.interactionConfiguration[queue.id+song.user.id];
-                }
-                else message = await song.textChannel.send({ embeds: [embed], components: [row] });
-            } catch (error) {
-                console.log(error);
-                message = await song.textChannel.send({ embeds: [embed], components: [row] });
+        
+        let message = null;
+        let interaction = client.interactionConfiguration[queue.id+song.user.id];
+        try {
+            if(interaction) {
+                message = await interaction.editReply({ embeds: [embed], components: [row] });
+                delete client.interactionConfiguration[queue.id+song.user.id];
             }
-            client.messages[queue.id] = message;
+            else message = await song.textChannel.send({ embeds: [embed], components: [row] });
+        } catch (error) {
+            console.log(error);
+            message = await song.textChannel.send({ embeds: [embed], components: [row] });
         }
+        client.messages[queue.id] = message;
     } catch (error) {
         console.log(error);
     }
@@ -193,7 +192,6 @@ for (let i = 0; i < files.length; i++) {
         console.log(error);
     }
 })();
-
 client.on(Events.ClientReady, () => {
     console.log(`[SERVER] ${client.user.username} it's ready!`);
     const messageCheck = async() => {
