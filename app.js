@@ -429,7 +429,8 @@ client.on(Events.InteractionCreate, async(interaction) => {
                             .setStyle(ButtonStyle.Secondary)
                     ]);
                 try {
-                    await interaction.update({ components: [row] });
+                    let message = await interaction.update({ components: [row] });
+                    client.messages[interaction.guildId] = message;
                 } catch (error) {
                     console.log(error);
                 }
@@ -477,10 +478,24 @@ client.on(Events.InteractionCreate, async(interaction) => {
                         ephemeral: true
                     }
                     if(display.length > 5) body["components"] = [row];
-                    await interaction.reply(body);
+                    let queueMessage = await interaction.reply(body);
+                    let pageQueue = client.pageQueue[interaction.guildId+interaction.user.id];
+                    if(pageQueue) {
+                        try {
+                            await pageQueue.edit({
+                                embeds: [],
+                                components: [],
+                                content: "You created a new queue page!"
+                            });
+                        } catch (error) {
+                            console.log(error);
+                        }
+                    }
+
                     client.pageQueue[interaction.guildId+interaction.user.id] = {
                         number: 1,
-                        index: 0
+                        index: 0,
+                        message: queueMessage
                     };
                 } catch (error) {
                     console.log(error);
@@ -518,7 +533,6 @@ client.on(Events.InteractionCreate, async(interaction) => {
                     number++;
                     indexPage+=5;
                 }
-                client.pageQueue[interaction.guildId+interaction.message.id] = { number, index: indexPage };
             }
             else {
                 number = 1;
@@ -561,7 +575,12 @@ client.on(Events.InteractionCreate, async(interaction) => {
                     embeds: [embed]
                 }
                 if(display.length > 5) body["components"] = [row];
-                await interaction.update(body);
+                let queueMessage = await interaction.update(body);
+                client.pageQueue[interaction.guildId+interaction.message.id] = {
+                    number,
+                    index: indexPage,
+                    message: queueMessage
+                };
             } catch (error) {
                 console.log(error);
             }

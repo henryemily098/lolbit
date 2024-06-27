@@ -914,7 +914,7 @@ class ClientPlayer {
                     }
                     event.emit("finishSong", { guildId: textChannel.guildId, song });
                 })
-                .on("error", (error) => {
+                .on("error", () => {
                     let queue = this.queues.get(textChannel.guildId);
                     if(!queue) return;
 
