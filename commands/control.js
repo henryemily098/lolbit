@@ -49,10 +49,10 @@ module.exports.run = async(interaction) => {
         return;
     }
 
-    let messages = interaction.client.messages[interaction.guildId];
-    if(messages && messages[0]) {
+    let message = interaction.client.messages[interaction.guildId];
+    if(message) {
         try {
-            await messages[0].delete();
+            await message.delete();
         } catch (error) {
             console.log(error);
         }
@@ -99,15 +99,12 @@ module.exports.run = async(interaction) => {
             .setDescription(`[${song.title}](${song.url})`)
             .setFooter({ text: `Requested by ${song.user.username}` });
 
-        interaction.client.messages[interaction.guildId] = [];
         let message = await interaction.reply({
             embeds: [embed],
             components: [row],
             fetchReply: true
         });
-
-        interaction.client.messages[interaction.guildId].push(message);
-        interaction.client.messages[interaction.guildId] = Array.from(new Set(interaction.client.messages[interaction.guildId]));
+        interaction.client.messages[interaction.guildId] = message;
     } catch (error) {
         console.log(error);
     }
